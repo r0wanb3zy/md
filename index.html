@@ -13,12 +13,7 @@
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    html, body {
-      height: 100%;
-      background: #1e1e2e;
-      color: #cdd6f4;
-    }
+    html, body { height: 100%; background: #1e1e2e; color: #cdd6f4; }
 
     .CodeMirror {
       height: 100vh;
@@ -29,16 +24,10 @@
       color: #cdd6f4;
       border: none;
     }
-
-    .CodeMirror-scroll {
-      padding: 24px 10%;
-    }
-
+    .CodeMirror-scroll { padding: 24px 10%; }
     .CodeMirror-scroll::-webkit-scrollbar { width: 6px; }
-    .CodeMirror-scroll::-webkit-scrollbar-track { background: transparent; }
     .CodeMirror-scroll::-webkit-scrollbar-thumb { background: #313244; border-radius: 3px; }
 
-    /* Markdown syntax highlighting */
     .cm-header         { color: #cba6f7 !important; font-weight: bold; }
     .cm-header-1       { font-size: 1.4em; }
     .cm-header-2       { font-size: 1.2em; }
@@ -51,7 +40,6 @@
     .cm-quote          { color: #a6e3a1 !important; font-style: italic; }
     .cm-formatting     { color: #6c7086 !important; }
     .cm-formatting-list { color: #cba6f7 !important; }
-
     .CodeMirror-cursor  { border-left: 2px solid #cba6f7; }
     .CodeMirror-selected { background: rgba(203,166,247,0.18) !important; }
     .CodeMirror pre.CodeMirror-placeholder { color: #6c7086; }
@@ -61,10 +49,8 @@
   <textarea id="editor"></textarea>
 
   <script>
-    // ── State ────────────────────────────────────────────────────────────────
     const sn = { sessionKey: null, note: null, ready: false };
 
-    // ── CodeMirror ───────────────────────────────────────────────────────────
     const cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
       mode: 'markdown',
       lineWrapping: true,
@@ -75,38 +61,38 @@
       tabSize: 2,
     });
 
-    // ── Save to Standard Notes (this IS the native SN save) ──────────────────
-    // SN has no separate save function — all editors use this exact postMessage.
-    // Calling this is identical to what SN's own built-in editors do internally.
+    // Save to SN on every keystroke (debounced)
     let debounceTimer = null;
     cm.on('change', function () {
       if (!sn.ready) return;
       clearTimeout(debounceTimer);
       debounceTimer = setTimeout(function () {
+        if (!sn.sessionKey || !sn.note) return;
         window.parent.postMessage({
           action: 'save-items',
           data: {
             items: [{
               uuid: sn.note.uuid,
-              content: { text: cm.getValue() }
+              content: {
+                text: cm.getValue(),
+              }
             }]
           },
           sessionKey: sn.sessionKey,
           api: 'component',
         }, '*');
-      }, 300); // 300ms debounce — saves 300ms after you stop typing
+      }, 250);
     });
 
-    // ── Standard Notes Message Handler ───────────────────────────────────────
+    // Handle messages from Standard Notes
     window.addEventListener('message', function (event) {
       const msg = event.data;
       if (!msg || !msg.action) return;
 
-      // Step 2: SN confirms registration and gives us the sessionKey
       if (msg.action === 'component-registered') {
         sn.sessionKey = msg.sessionKey;
 
-        // Step 3: Ask SN to stream the current note to us
+        // Request the current note
         window.parent.postMessage({
           action: 'stream-context-item',
           api: 'component',
@@ -114,7 +100,6 @@
         }, '*');
       }
 
-      // Step 4: SN sends the note — load it into the editor
       if (msg.action === 'stream-context-item') {
         const item = msg.data && msg.data.item;
         if (!item) return;
@@ -123,13 +108,11 @@
         const text = (item.content && item.content.text) ? item.content.text : '';
 
         if (!sn.ready) {
-          // Initial load — set content without triggering a save
           sn.ready = false;
           cm.setValue(text);
           cm.clearHistory();
           sn.ready = true;
         } else {
-          // Note updated externally (e.g. sync from another device)
           const cursor = cm.getCursor();
           sn.ready = false;
           cm.setValue(text);
@@ -139,8 +122,26 @@
       }
     });
 
-    // Step 1: Announce ourselves to Standard Notes
-    window.parent.postMessage({ action: 'ready', api: 'component' }, '*');
+    // Announce to SN with full component descriptor
+    // This is the critical part — SN needs to know who we are
+    // before it will trust our save-items calls
+    window.parent.postMessage({
+      action: 'ready',
+      api: 'component',
+      data: {
+        component: {
+          identifier: 'com.r0wanb3zy.markdown-editor',
+          name: 'Markdown Editor',
+          content_type: 'SN|Component',
+          area: 'editor-editor',
+          version: '1.0.0',
+          hosted_url: 'https://r0wanb3zy.github.io/md/index.html',
+          permissions: [
+            { name: 'stream-context-item' }
+          ]
+        }
+      }
+    }, '*');
   </script>
 </body>
 </html>
