@@ -3,7 +3,7 @@
   "name": "Markdown Syntax Highlighter",
   "content_type": "SN|Component",
   "area": "editor-editor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Highlights raw Markdown syntax for easier reading.",
   "url": "https://r0wanb3zy.github.io/md/index.html",
   "latest_url": "https://r0wanb3zy.github.io/md/ext.json",
