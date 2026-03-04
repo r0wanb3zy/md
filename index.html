@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Markdown Editor</title>
+
+  <!-- CodeMirror 5 (CDN) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/nord.min.css"/>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/continuelist.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/display/placeholder.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1e1e2e;
+      --surface: #181825;
+      --border: #313244;
+      --accent: #cba6f7;
+      --green: #a6e3a1;
+      --red: #f38ba8;
+      --text: #cdd6f4;
+      --subtext: #6c7086;
+      --saved-color: #a6e3a1;
+      --saving-color: #fab387;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Georgia', serif;
+    }
+
+    #status-bar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 28px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 0 14px;
+      gap: 10px;
+      z-index: 100;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      color: var(--subtext);
+    }
+
+    #save-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: color 0.3s;
+    }
+
+    #save-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--saved-color);
+      transition: background 0.3s;
+    }
+
+    #save-indicator.saving #save-dot { background: var(--saving-color); }
+    #save-indicator.saving { color: var(--saving-color); }
+    #save-indicator.saved { color: var(--saved-color); }
+
+    #editor-wrap {
+      position: absolute;
+      top: 28px; left: 0; right: 0; bottom: 0;
+      overflow: hidden;
+    }
+
+    .CodeMirror {
+      height: 100%;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 15px;
+      line-height: 1.75;
+      background: var(--bg);
+      color: var(--text);
+      border: none;
+    }
+
+    .CodeMirror-scroll {
+      padding: 24px 10%;
+    }
+
+    /* Scrollbar */
+    .CodeMirror-scroll::-webkit-scrollbar { width: 6px; }
+    .CodeMirror-scroll::-webkit-scrollbar-track { background: transparent; }
+    .CodeMirror-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* Markdown syntax colors */
+    .cm-header { color: var(--accent) !important; font-weight: bold; }
+    .cm-header-1 { font-size: 1.4em; }
+    .cm-header-2 { font-size: 1.2em; }
+    .cm-header-3 { font-size: 1.1em; }
+    .cm-strong { color: #f9e2af !important; font-weight: bold; }
+    .cm-em { color: #89dceb !important; font-style: italic; }
+    .cm-strikethrough { color: var(--subtext) !important; }
+    .cm-link { color: #89b4fa !important; }
+    .cm-url { color: #74c7ec !important; }
+    .cm-quote { color: var(--green) !important; border-left: 3px solid var(--green); padding-left: 6px; font-style: italic; }
+    .cm-comment { color: var(--subtext) !important; }
+    .cm-tag { color: var(--red) !important; }
+    .cm-attribute { color: #f9e2af !important; }
+    .cm-string { color: var(--green) !important; }
+    .cm-keyword { color: var(--accent) !important; }
+    .cm-variable-2 { color: #89dceb !important; }
+    .cm-formatting { color: var(--subtext) !important; }
+    .cm-formatting-list { color: var(--accent) !important; }
+    .cm-formatting-header { color: var(--accent) !important; }
+
+    /* Cursor */
+    .CodeMirror-cursor { border-left: 2px solid var(--accent); }
+
+    /* Selection */
+    .CodeMirror-selected { background: rgba(203, 166, 247, 0.18) !important; }
+
+    /* Placeholder */
+    .CodeMirror pre.CodeMirror-placeholder { color: var(--subtext); }
+  </style>
+</head>
+<body>
+
+  <div id="status-bar">
+    <div id="save-indicator" class="saved">
+      <div id="save-dot"></div>
+      <span id="save-label">Saved</span>
+    </div>
+  </div>
+
+  <div id="editor-wrap">
+    <textarea id="editor"></textarea>
+  </div>
+
+  <script>
+    // ─── Standard Notes Bridge ───────────────────────────────────────────────
+    const snBridge = {
+      sessionKey: null,
+      note: null,
+      ready: false,
+    };
+
+    // ─── CodeMirror Setup ────────────────────────────────────────────────────
+    const cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
+      mode: 'markdown',
+      theme: 'default',       // we override colors via CSS
+      lineWrapping: true,
+      autofocus: true,
+      extraKeys: {
+        Enter: 'newlineAndIndentContinueMarkdownList',
+      },
+      placeholder: 'Start writing in Markdown…',
+      indentWithTabs: false,
+      tabSize: 2,
+    });
+
+    // ─── Save UI ─────────────────────────────────────────────────────────────
+    const indicator = document.getElementById('save-indicator');
+    const saveLabel = document.getElementById('save-label');
+    let saveTimer = null;
+
+    function setSaving() {
+      indicator.className = 'saving';
+      saveLabel.textContent = 'Saving…';
+    }
+
+    function setSaved() {
+      indicator.className = 'saved';
+      saveLabel.textContent = 'Saved';
+    }
+
+    // ─── Save to Standard Notes ───────────────────────────────────────────────
+    function saveToSN(text) {
+      if (!snBridge.sessionKey || !snBridge.note) return;
+
+      setSaving();
+      window.parent.postMessage({
+        action: 'save-items',
+        data: {
+          items: [{
+            uuid: snBridge.note.uuid,
+            content: {
+              text: text,
+            }
+          }]
+        },
+        sessionKey: snBridge.sessionKey,
+        api: 'component',
+      }, '*');
+
+      // Mark saved after a short delay
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(setSaved, 600);
+    }
+
+    // ─── Debounce saving on every keystroke ───────────────────────────────────
+    let debounceTimer = null;
+    cm.on('change', function() {
+      if (!snBridge.ready) return;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function() {
+        saveToSN(cm.getValue());
+      }, 300);
+    });
+
+    // ─── Standard Notes Message Listener ─────────────────────────────────────
+    window.addEventListener('message', function(event) {
+      const msg = event.data;
+      if (!msg || !msg.action) return;
+
+      if (msg.action === 'component-registered') {
+        // Step 1: SN registers us — grab the session key
+        snBridge.sessionKey = msg.sessionKey;
+
+        // Step 2: Tell SN we are ready and want to stream the current note
+        window.parent.postMessage({
+          action: 'stream-context-item',
+          api: 'component',
+          sessionKey: snBridge.sessionKey,
+        }, '*');
+      }
+
+      if (msg.action === 'stream-context-item') {
+        // Step 3: SN sends us the note — load it into the editor
+        const item = msg.data && msg.data.item;
+        if (!item) return;
+
+        snBridge.note = item;
+
+        if (!snBridge.ready) {
+          // First load — populate editor without triggering save
+          snBridge.ready = false;
+          cm.setValue(item.content && item.content.text ? item.content.text : '');
+          cm.clearHistory();
+          snBridge.ready = true;
+          setSaved();
+        } else {
+          // Note changed externally (e.g. sync from another device)
+          const cursor = cm.getCursor();
+          cm.setValue(item.content && item.content.text ? item.content.text : '');
+          cm.setCursor(cursor);
+          setSaved();
+        }
+      }
+    });
+
+    // ─── Announce ourselves to Standard Notes ────────────────────────────────
+    // SN loads the editor in an iframe. We post "ready" upward so SN knows
+    // to register us and send back component-registered.
+    window.parent.postMessage({
+      action: 'ready',
+      api: 'component',
+    }, '*');
+  </script>
+</body>
+</html>

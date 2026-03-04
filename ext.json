@@ -1,0 +1,11 @@
+{
+  "identifier": "com.r0wanb3zy.markdown-editor",
+  "name": "Markdown Editor",
+  "description": "Plain text editor with Markdown syntax highlighting",
+  "url": "https://r0wanb3zy.github.io/md/ext.json",
+  "content_type": "SN|Component",
+  "area": "editor-editor",
+  "version": "1.0.0",
+  "hosted_url": "https://r0wanb3zy.github.io/md/index.html",
+  "download_url": "https://r0wanb3zy.github.io/md/index.html"
+}
