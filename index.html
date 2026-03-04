@@ -5,143 +5,96 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Markdown Editor</title>
 
+  <!-- CodeMirror -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/continuelist.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/display/placeholder.min.js"></script>
+
+  <!-- The SAME API used by Excalidraw and all working SN plugins -->
+  <script src="https://unpkg.com/sn-extension-api@latest/dist/sn-extension-api.min.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    html, body { height: 100%; background: #1e1e2e; color: #cdd6f4; }
+
+    html, body {
+      height: 100%;
+      /* Uses SN's own theme variables so it matches whatever theme the user has */
+      background-color: var(--sn-stylekit-background-color, #ffffff);
+      color: var(--sn-stylekit-foreground-color, #000000);
+    }
 
     .CodeMirror {
       height: 100vh;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 15px;
+      font-family: var(--sn-stylekit-editor-font-family, 'Courier New', monospace);
+      font-size: var(--sn-stylekit-font-size-editor, 15px);
       line-height: 1.75;
-      background: #1e1e2e;
-      color: #cdd6f4;
+      background: var(--sn-stylekit-background-color, #ffffff);
+      color: var(--sn-stylekit-foreground-color, #000000);
       border: none;
     }
-    .CodeMirror-scroll { padding: 24px 10%; }
-    .CodeMirror-scroll::-webkit-scrollbar { width: 6px; }
-    .CodeMirror-scroll::-webkit-scrollbar-thumb { background: #313244; border-radius: 3px; }
 
-    .cm-header         { color: #cba6f7 !important; font-weight: bold; }
-    .cm-header-1       { font-size: 1.4em; }
-    .cm-header-2       { font-size: 1.2em; }
-    .cm-header-3       { font-size: 1.1em; }
-    .cm-strong         { color: #f9e2af !important; font-weight: bold; }
-    .cm-em             { color: #89dceb !important; font-style: italic; }
-    .cm-strikethrough  { color: #6c7086 !important; }
-    .cm-link           { color: #89b4fa !important; }
-    .cm-url            { color: #74c7ec !important; }
-    .cm-quote          { color: #a6e3a1 !important; font-style: italic; }
-    .cm-formatting     { color: #6c7086 !important; }
-    .cm-formatting-list { color: #cba6f7 !important; }
-    .CodeMirror-cursor  { border-left: 2px solid #cba6f7; }
-    .CodeMirror-selected { background: rgba(203,166,247,0.18) !important; }
-    .CodeMirror pre.CodeMirror-placeholder { color: #6c7086; }
+    .CodeMirror-scroll {
+      padding: 20px 8%;
+    }
+
+    .CodeMirror-scroll::-webkit-scrollbar { width: 5px; }
+    .CodeMirror-scroll::-webkit-scrollbar-thumb {
+      background: var(--sn-stylekit-border-color, #ccc);
+      border-radius: 3px;
+    }
+
+    /* ── Markdown syntax highlighting ── */
+    .cm-header         { font-weight: bold !important; }
+    .cm-header-1       { font-size: 1.5em !important; color: #7c3aed !important; }
+    .cm-header-2       { font-size: 1.3em !important; color: #6d28d9 !important; }
+    .cm-header-3       { font-size: 1.1em !important; color: #5b21b6 !important; }
+    .cm-strong         { color: #b45309 !important; font-weight: bold !important; }
+    .cm-em             { color: #0369a1 !important; font-style: italic !important; }
+    .cm-strikethrough  { color: #9ca3af !important; text-decoration: line-through !important; }
+    .cm-link           { color: #0284c7 !important; }
+    .cm-url            { color: #0ea5e9 !important; }
+    .cm-quote          { color: #059669 !important; font-style: italic !important; }
+    .cm-formatting     { color: #9ca3af !important; }
+    .cm-formatting-list { color: #7c3aed !important; }
+    .cm-hr             { color: #9ca3af !important; }
+
+    .CodeMirror-cursor  { border-left: 2px solid #7c3aed !important; }
+    .CodeMirror-selected { background: rgba(124,58,237,0.12) !important; }
   </style>
 </head>
 <body>
   <textarea id="editor"></textarea>
 
   <script>
-    const sn = { sessionKey: null, note: null, ready: false };
-
     const cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
       mode: 'markdown',
       lineWrapping: true,
       autofocus: true,
       extraKeys: { Enter: 'newlineAndIndentContinueMarkdownList' },
-      placeholder: 'Start writing…',
       indentWithTabs: false,
       tabSize: 2,
     });
 
-    // Save to SN on every keystroke (debounced)
-    let debounceTimer = null;
+    // ── Initialize the official SN API (same as Excalidraw plugin) ────────────
+    // This handles ALL the postMessage handshaking internally.
+    // We just set snApi.text and it saves. That's it.
+    snApi.initialize();
+
+    // When SN sends us the note, load it into CodeMirror
+    snApi.subscribe(() => {
+      const currentText = snApi.text || '';
+      if (cm.getValue() !== currentText) {
+        const cursor = cm.getCursor();
+        cm.setValue(currentText);
+        cm.setCursor(cursor);
+      }
+    });
+
+    // When the user types, update snApi.text — this triggers the save automatically
     cm.on('change', function () {
-      if (!sn.ready) return;
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(function () {
-        if (!sn.sessionKey || !sn.note) return;
-        window.parent.postMessage({
-          action: 'save-items',
-          data: {
-            items: [{
-              uuid: sn.note.uuid,
-              content: {
-                text: cm.getValue(),
-              }
-            }]
-          },
-          sessionKey: sn.sessionKey,
-          api: 'component',
-        }, '*');
-      }, 250);
+      snApi.text = cm.getValue();
     });
-
-    // Handle messages from Standard Notes
-    window.addEventListener('message', function (event) {
-      const msg = event.data;
-      if (!msg || !msg.action) return;
-
-      if (msg.action === 'component-registered') {
-        sn.sessionKey = msg.sessionKey;
-
-        // Request the current note
-        window.parent.postMessage({
-          action: 'stream-context-item',
-          api: 'component',
-          sessionKey: sn.sessionKey,
-        }, '*');
-      }
-
-      if (msg.action === 'stream-context-item') {
-        const item = msg.data && msg.data.item;
-        if (!item) return;
-
-        sn.note = item;
-        const text = (item.content && item.content.text) ? item.content.text : '';
-
-        if (!sn.ready) {
-          sn.ready = false;
-          cm.setValue(text);
-          cm.clearHistory();
-          sn.ready = true;
-        } else {
-          const cursor = cm.getCursor();
-          sn.ready = false;
-          cm.setValue(text);
-          sn.ready = true;
-          cm.setCursor(cursor);
-        }
-      }
-    });
-
-    // Announce to SN with full component descriptor
-    // This is the critical part — SN needs to know who we are
-    // before it will trust our save-items calls
-    window.parent.postMessage({
-      action: 'ready',
-      api: 'component',
-      data: {
-        component: {
-          identifier: 'com.r0wanb3zy.markdown-editor',
-          name: 'Markdown Editor',
-          content_type: 'SN|Component',
-          area: 'editor-editor',
-          version: '1.0.0',
-          hosted_url: 'https://r0wanb3zy.github.io/md/index.html',
-          permissions: [
-            { name: 'stream-context-item' }
-          ]
-        }
-      }
-    }, '*');
   </script>
 </body>
 </html>
